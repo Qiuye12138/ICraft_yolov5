@@ -26,7 +26,7 @@ from utils.general import (LOGGER, ROOT, Profile, check_requirements, check_suff
                            yaml_load)
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import copy_attr, smart_inference_mode
-
+from ICRAFT import SUM_L, SUM_R, SUM_A, SILU_I, SILU_O
 
 def autopad(k, p=None):  # kernel, padding
     # Pad to 'same'
@@ -43,7 +43,7 @@ class Conv(nn.Module):
         self.act = nn.SiLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
 
     def forward(self, x):
-        return self.act(self.conv(x))
+        return self.act(self.conv(x) * next(SILU_I)) / next(SILU_O)
 
     def forward_fuse(self, x):
         return self.act(self.conv(x))
@@ -107,7 +107,7 @@ class Bottleneck(nn.Module):
         self.add = shortcut and c1 == c2
 
     def forward(self, x):
-        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+        return (x * next(SUM_L) + self.cv2(self.cv1(x)) * next(SUM_R)) / next(SUM_A) if self.add else self.cv2(self.cv1(x))
 
 
 class BottleneckCSP(nn.Module):
@@ -125,7 +125,7 @@ class BottleneckCSP(nn.Module):
     def forward(self, x):
         y1 = self.cv3(self.m(self.cv1(x)))
         y2 = self.cv2(x)
-        return self.cv4(self.act(torch.cat((y1, y2), 1)))
+        return self.cv4(self.act(torch.cat((y1, y2), 1) * next(SILU_I)) / next(SILU_O))
 
 
 class CrossConv(nn.Module):

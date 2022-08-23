@@ -313,16 +313,28 @@ def copy_attr(a, b, include=(), exclude=()):
             setattr(a, k, v)
 
 
-def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5):
+def get_MaskMatrix(tensor, ratio):
+
+    Z = torch.zeros_like(tensor)                                # 0
+    O = torch.ones_like(tensor)                                 # 1
+    I = torch.quantile(torch.abs(tensor).flatten(), 1 - ratio)  # get the ratio% bigger point
+    M = torch.where(torch.abs(tensor) >= I, Z, O)               # big = 0;  small = 1
+
+    return M.cuda()
+
+
+def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5, ratio=0.5):
     # YOLOv5 3-param group optimizer: 0) weights with decay, 1) weights no decay, 2) biases no decay
     g = [], [], []  # optimizer parameter groups
     bn = tuple(v for k, v in nn.__dict__.items() if 'Norm' in k)  # normalization layers, i.e. BatchNorm2d()
-    for v in model.modules():
+    for myname, v in model.named_modules():
         if hasattr(v, 'bias') and isinstance(v.bias, nn.Parameter):  # bias (no decay)
+            v.bias.MaskMatrix = get_MaskMatrix(v.bias, ratio)
             g[2].append(v.bias)
         if isinstance(v, bn):  # weight (no decay)
             g[1].append(v.weight)
         elif hasattr(v, 'weight') and isinstance(v.weight, nn.Parameter):  # weight (with decay)
+            v.weight.MaskMatrix = get_MaskMatrix(v.weight, ratio)
             g[0].append(v.weight)
 
     if name == 'Adam':
