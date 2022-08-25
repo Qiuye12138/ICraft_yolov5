@@ -137,7 +137,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
             for k in W.keys():
                 if k != 'model.24.anchors':
-                    W[k] = torch.round(W[k] / SCALE_TABLE[k]) * SCALE_TABLE[k]
+                    W[k] = torch.round(W[k].float().cpu() / SCALE_TABLE[k]) * SCALE_TABLE[k]
 
             model.load_state_dict(W)
 
