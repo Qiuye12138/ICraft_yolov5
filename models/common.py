@@ -28,6 +28,18 @@ from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import copy_attr, smart_inference_mode
 from ICRAFT import SUM_L, SUM_R, SUM_A, SILU_I, SILU_O
 
+
+class FakeQuantize(torch.autograd.Function):
+
+    @staticmethod
+    def forward(self, x):
+        return nn.Hardtanh(-32768, 32767)(torch.round(x))
+
+    @staticmethod
+    def backward(self, grad_output):
+        return grad_output
+
+
 def autopad(k, p=None):  # kernel, padding
     # Pad to 'same'
     if p is None:
@@ -43,7 +55,7 @@ class Conv(nn.Module):
         self.act = nn.SiLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
 
     def forward(self, x):
-        return self.act(self.conv(x) * next(SILU_I)) / next(SILU_O)
+        return FakeQuantize.apply(self.act(FakeQuantize.apply(self.conv(x)) * next(SILU_I)) / next(SILU_O))
 
     def forward_fuse(self, x):
         return self.act(self.conv(x))
@@ -107,7 +119,7 @@ class Bottleneck(nn.Module):
         self.add = shortcut and c1 == c2
 
     def forward(self, x):
-        return (x * next(SUM_L) + self.cv2(self.cv1(x)) * next(SUM_R)) / next(SUM_A) if self.add else self.cv2(self.cv1(x))
+        return FakeQuantize.apply((x * next(SUM_L) + self.cv2(self.cv1(x)) * next(SUM_R)) / next(SUM_A)) if self.add else self.cv2(self.cv1(x))
 
 
 class BottleneckCSP(nn.Module):
